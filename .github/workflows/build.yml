@@ -1,0 +1,43 @@
+name: build-web-demo
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get source (public repo, read only)
+        run: git clone --depth 1 https://github.com/AhmedElemey/xstore.git src
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Web entry point without Firebase
+        working-directory: src
+        run: |
+          cat > lib/main_web.dart <<'DART'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'app.dart';
+          import 'core/config/app_config.dart';
+          import 'core/config/app_flavor.dart';
+
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            AppConfig.init(AppFlavor.dev);
+            runApp(const ProviderScope(child: XstoreApp()));
+          }
+          DART
+      - name: Build
+        working-directory: src
+        run: |
+          flutter pub get
+          (dart run build_runner build --delete-conflicting-outputs || true)
+          flutter build web --profile -t lib/main_web.dart --dart-define=MOCK=true --dart-define=API_BASE_URL=https://example.invalid --base-href /xstore-web-demo/ --no-tree-shake-icons
+      - name: Publish
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: src/build/web
